@@ -1,0 +1,192 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Jul 10 14:45:58 2022
+
+@author: USER
+"""
+
+import csv
+import pickle
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import xgboost as xgb
+from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import SGDClassifier
+
+from sklearn.model_selection import train_test_split
+
+from sklearn.metrics import average_precision_score
+
+from sklearn.metrics import (
+    auc,
+    classification_report,
+    plot_confusion_matrix,
+    plot_roc_curve,
+)
+
+from sklearn.metrics import precision_recall_curve
+
+from sklearn.metrics import plot_precision_recall_curve
+
+from sklearn.metrics import roc_curve, roc_auc_score
+
+
+#----------- Data -----------------
+
+input_file = "data/2nd_DS_V02.csv"
+
+np.set_printoptions(precision=2)
+
+df = pd.read_csv(input_file)
+
+all_data = df
+
+y = df["Result"]
+x = df.drop("Result", axis=1)
+
+X = x
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=4)
+
+
+#--------------- /Data ------------
+
+fig, ax = plt.subplots()
+
+results = []
+model_displays = {}
+scoring = "accuracy"
+
+
+names = [
+    "NearestNeighbors",
+    "DecisionTree",
+    "RandomForest",
+    "XGBoost",
+    "NeuralNet",
+    "AdaBoost",
+]
+
+classifiers = [
+    KNeighborsClassifier(n_neighbors=3, n_jobs=-1),
+    DecisionTreeClassifier(
+        random_state=0,
+        max_depth=5,
+        min_samples_leaf=1,
+        min_samples_split=2,
+        splitter="best",
+    ),
+    RandomForestClassifier(max_depth=3, n_estimators=10, n_jobs=-1),
+    xgb.XGBClassifier(
+        n_estimators=100,
+        colsample_bytree=0.8317,
+        learning_rate=0.3,
+        max_depth=11,
+        min_child_weight=3.0,
+        subsample=0.9099,
+        gamma=0.292,
+        reg_lambda=0.447,
+    ),
+    MLPClassifier(alpha=1, max_iter=1000),
+    AdaBoostClassifier(),
+]
+
+
+fig, ax = plt.subplots()
+
+results = []
+model_displays = {}
+model_displays_PR = {}
+ROC_auc_array = {}
+PR_auc_array = {}
+scoring = "accuracy"
+
+
+for name, model in zip(names, classifiers):
+
+    print("Predicting with", name)
+
+    picklefile = str(name) + ".pickle"
+
+    clf = model.fit(X_train, y_train)
+    y_predicted = clf.predict(X_test)
+    print(clf.score(X_train, y_train), clf.score(X_test, y_test))
+    try:
+        y_score = clf.predict_proba(X_test)[:, 1]
+    except:
+        print("clf.predict_proba unavailable")
+        continue
+    
+    ROC_auc = roc_auc_score(y_test, y_score)
+    print('The area under the ROC curve', name, ROC_auc)
+    
+    ROC_auc_array['ROC score', name] = roc_auc_score(y_test, y_score)
+    
+    PR_auc_array['PR score for', name] = average_precision_score(y_test, y_score)
+
+    disp = plot_confusion_matrix(
+        clf,
+        X_test,
+        y_test,
+        display_labels=["Jet", "Ele"],
+        cmap=plt.cm.get_cmap("hot"),
+    )
+    disp.ax_.set_title(name + "Confusion Matrix")
+    print(disp.confusion_matrix)
+    plt.savefig(name + "confusion_matrix.png")
+
+    np.set_printoptions(precision=4)
+
+    print("Saving model")
+    with open(picklefile, "wb") as f:
+        pickle.dump(clf, f)
+
+    print("Plotting roc")
+    model_displays[name] = plot_roc_curve(clf, X_test, y_test, ax=ax, name=name)
+   # model_displays_PR[name] = plot_precision_recall_curve(clf, X_test, y_test, ax=ax, name=name)
+    
+    report = classification_report(
+        y_test, y_predicted, target_names=["Jet", "Ele"]
+    )
+    results.append(
+        [name, clf.score(X_train, y_train), clf.score(X_test, y_test), report]
+    )
+
+    print(name, "Classification report:\n", report)
+    print(name, "Accuracy = ",clf.score(X_test,y_test))
+
+
+plt.figure(1)
+plt.plot([0, 1], [0, 1], "k--")
+
+plt.xlabel("False positive rate")
+plt.ylabel("True positive rate")
+plt.title("ROC curve")
+plt.legend(loc="best")
+plt.savefig("data/all_models_roc_curve.png")
+plt.show()
+
+_ = ax.set_title("ROC curve")
+ax.set_xlim(0, 0.2)
+ax.set_ylim(0.8, 1)
+plt.savefig("data/multi_model_roc_curve.png")
+
+
+
+
+
+#accuracy_results = dict(zip(names, results))
+#print(accuracy_results)
+
+#print(ROC_auc_array)
+
+
+'''with open("scaling_multi_model_results.csv", "w") as file:
+    w = csv.writer(file)
+    w.writerows(accuracy_results.items())
+'''
